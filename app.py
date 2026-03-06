@@ -2,22 +2,23 @@ import streamlit as st
 from supabase import create_client
 from fpdf import FPDF
 
-# Configuration WIKIDATA IT
+# 1. Configuration WIKIDATA IT
 st.set_page_config(page_title="WIKIDATA IT", page_icon="🌐", layout="centered")
 
-# --- CONNEXION SUPABASE ---
+# 2. Connexion Supabase
+# Assure-toi que SUPABASE_KEY est bien dans tes Secrets Streamlit
 URL = "https://xqclkymzecsyhoubtszz.supabase.co"
 KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(URL, KEY)
 
-# --- FONCTION GÉNÉRATION PDF ---
+# 3. Fonction de génération du PDF
 def generate_pdf(prod_name, brand, ref, specs):
     pdf = FPDF()
     pdf.add_page()
     
-    # En-tête
+    # En-tête du document
     pdf.set_font("Arial", "B", 16)
-    pdf.set_text_color(30, 136, 229) # Bleu WIKIDATA
+    pdf.set_text_color(30, 136, 229) 
     pdf.cell(0, 10, "WIKIDATA IT - FICHE TECHNIQUE", ln=True, align='C')
     
     pdf.set_font("Arial", "I", 10)
@@ -25,7 +26,7 @@ def generate_pdf(prod_name, brand, ref, specs):
     pdf.cell(0, 10, "La base de connaissances hardware du Maroc", ln=True, align='C')
     pdf.ln(10)
     
-    # Infos Produit
+    # Infos de base
     pdf.set_font("Arial", "B", 12)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(0, 10, f"Produit : {prod_name}", ln=True)
@@ -34,9 +35,9 @@ def generate_pdf(prod_name, brand, ref, specs):
     pdf.cell(0, 8, f"Reference PN : {ref}", ln=True)
     pdf.ln(5)
     
-    # Spécifications
+    # Détails techniques
     if "FeaturesGroups" in specs:
-        for group in specs["FeaturesGroups"][:8]: # Top 8 groupes pour ne pas avoir un PDF trop long
+        for group in specs["FeaturesGroups"][:8]:
             pdf.set_font("Arial", "B", 11)
             pdf.set_fill_color(240, 240, 240)
             pdf.cell(0, 8, f" {group.get('GroupName', 'Info')} ", ln=True, fill=True)
@@ -46,19 +47,20 @@ def generate_pdf(prod_name, brand, ref, specs):
                 name = feat.get("Feature", {}).get("Name", {}).get("Value")
                 val = feat.get("PresentationValue")
                 if name and val:
-                    # Gère le texte long pour éviter que ça dépasse
                     pdf.multi_cell(0, 6, f"{name}: {val}")
             pdf.ln(2)
             
     return pdf.output(dest='S')
 
-# --- INTERFACE WEB ---
+# 4. Interface Utilisateur
 st.markdown("<h1 style='text-align: center; color: #1E88E5;'>🌐 WIKIDATA IT</h1>", unsafe_allow_html=True)
-query = st.text_input("", placeholder="Rechercher une référence (ex: C11CJ67408)...")
+st.markdown("<p style='text-align: center;'>Recherche technique instantanée</p>", unsafe_allow_html=True)
+
+query = st.text_input("", placeholder="Saisissez une référence constructeur...")
 
 if query:
     query_clean = query.strip()
-    with st.spinner('Extraction des données...'):
+    with st.spinner('Extraction depuis WIKIDATA...'):
         res = supabase.table("it_specs_maroc").select("*").eq("ref_constructeur", query_clean).execute()
     
     if res.data:
@@ -67,24 +69,28 @@ if query:
         
         st.success(f"**{prod['nom_produit']}**")
         
-        # Bouton de téléchargement
-        pdf_bytes = generate_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], specs)
-        st.download_button(
-            label="📥 Télécharger la Fiche PDF Officielle",
-            data=pdf_bytes,
-            file_name=f"WIKIDATA_{prod['ref_constructeur']}.pdf",
-            mime="application/pdf"
-        )
+        # Génération et bouton PDF
+        try:
+            pdf_bytes = generate_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], specs)
+            st.download_button(
+                label="📥 Télécharger la Fiche PDF Officielle",
+                data=pdf_bytes,
+                file_name=f"WIKIDATA_{prod['ref_constructeur']}.pdf",
+                mime="application/pdf"
+            )
+        except Exception as e:
+            st.error(f"Erreur lors de la création du PDF : {e}")
         
         st.divider()
         
-        # Affichage Catégories sur le site
+        # Affichage des catégories techniques
         if "FeaturesGroups" in specs:
             for group in specs["FeaturesGroups"]:
                 with st.expander(f"🔹 {group.get('GroupName', 'Détails')}"):
                     for feature in group.get("Features", []):
                         n = feature.get("Feature", {}).get("Name", {}).get("Value")
                         v = feature.get("PresentationValue")
-                        if n and v: st.write(f"**{n} :** {v}")
+                        if n and v: 
+                            st.write(f"**{n} :** {v}")
     else:
-        st.error("
+        st.error("Cette référence n'est pas encore répertoriée dans la base.")
