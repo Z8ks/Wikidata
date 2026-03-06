@@ -24,54 +24,31 @@ if query:
     
     if res.data:
         prod = res.data[0]
-        st.balloons()
+        specs = prod['specs_json']
         
-        st.success(f"**Produit trouvé :** {prod['nom_produit']}")
+        # Message de succès avec le nom commercial
+        st.success(f"**Modèle trouvé :** {prod['nom_produit']}")
         
-        col1, col2 = st.columns(2)
-        col1.metric("Marque", prod['marque'])
-        col2.metric("Référence PN", prod['ref_constructeur'])
+        # --- NOUVEL AFFICHAGE ÉPURÉ (WIKIDATA STYLE) ---
+        col_info, col_btn = st.columns([3, 1])
+        with col_info:
+            st.subheader("📋 Fiche Technique Professionnelle")
         
-        with st.expander("📄 Voir la fiche technique complète", expanded=True):
-            st.json(prod['specs_json'])
-    else:
-        st.error("Cette référence n'est pas encore répertoriée. WIKIDATA s'enrichit chaque jour !")
-        # ... (gardez le début du code identique)
-
-if res.data:
-    prod = res.data[0]
-    specs = prod['specs_json'] # On récupère le dictionnaire complet
-
-    st.success(f"**Produit trouvé :** {prod['nom_produit']}")
-    
-    # Création d'onglets pour une navigation fluide
-    tab1, tab2 = st.tabs(["📋 Fiche Résumée", "💻 Données Brutes"])
-
-    with tab1:
-        # Extraction intelligente des caractéristiques principales
-        # Note : Les clés dépendent de la structure d'Icecat
-        info = specs.get("GeneralInfo", {})
-        
-        st.subheader("Caractéristiques Principales")
-        col_a, col_b = st.columns(2)
-        
-        with col_a:
-            st.write(f"**Modèle :** {info.get('ProductName', 'N/A')}")
-            st.write(f"**Marque :** {prod['marque']}")
-        
-        with col_b:
-            st.write(f"**Référence :** {prod['ref_constructeur']}")
-            st.write(f"**Catégorie :** {info.get('Category', {}).get('Name', {}).get('Value', 'Hardware')}")
-
-        # Affichage des spécifications sous forme de tableau
+        # On organise par catégories (Expanders)
         if "FeaturesGroups" in specs:
-            st.subheader("Détails Techniques")
             for group in specs["FeaturesGroups"]:
-                with st.expander(group.get("GroupName", "Spécifications")):
+                group_name = group.get("GroupName", "Information")
+                
+                # Création d'un volet déroulant par catégorie (ex: Impression, Scan, Connectivité)
+                with st.expander(f"🔹 {group_name}", expanded=(group_name == "GeneralInfo")):
                     for feature in group.get("Features", []):
                         name = feature.get("Feature", {}).get("Name", {}).get("Value")
                         value = feature.get("PresentationValue")
-                        st.write(f"**{name} :** {value}")
-
-    with tab2:
-        st.json(specs)
+                        if name and value:
+                            # Affichage propre Nom : Valeur
+                            st.write(f"**{name} :** {value}")
+        else:
+            st.info("Les détails techniques de ce produit sont simplifiés.")
+            
+    else:
+        st.error("Cette référence n'est pas encore dans la base WIKIDATA.")
