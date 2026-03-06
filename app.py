@@ -35,10 +35,10 @@ def generate_pdf(prod_name, brand, ref, specs):
     pdf.set_xy(10, 10)
     pdf.set_font("Arial", "B", 16)
     pdf.set_text_color(30, 136, 229)
-    pdf.cell(0, 10, "WIKIDATA IT", ln=True, align='R') [cite: 34]
+    pdf.cell(0, 10, "WIKIDATA IT", ln=True, align='R')
     pdf.set_font("Arial", "I", 8)
     pdf.set_text_color(150, 150, 150)
-    pdf.cell(0, 5, "LA BASE DE CONNAISSANCES HARDWARE DU MAROC", ln=True, align='R') [cite: 35]
+    pdf.cell(0, 5, "LA BASE DE CONNAISSANCES HARDWARE DU MAROC", ln=True, align='R')
     
     pdf.ln(10)
 
@@ -48,14 +48,14 @@ def generate_pdf(prod_name, brand, ref, specs):
     # Texte du produit (60% de la largeur)
     pdf.set_font("Arial", "B", 14)
     pdf.set_text_color(0, 0, 0)
-    pdf.multi_cell(w_utile * 0.6, 8, f"{prod_name}") [cite: 36]
+    pdf.multi_cell(w_utile * 0.6, 8, f"{prod_name}")
     
     pdf.set_font("Arial", "B", 9)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(w_utile * 0.6, 6, f"PN : {ref}", ln=True) [cite: 61]
-    pdf.cell(w_utile * 0.6, 6, f"MARQUE : {brand.upper()}", ln=True) [cite: 37]
+    pdf.cell(w_utile * 0.6, 6, f"PN : {ref}", ln=True)
+    pdf.cell(w_utile * 0.6, 6, f"MARQUE : {brand.upper()}", ln=True)
 
-    # Image produit à droite (40% de la largeur)
+    # Image produit à droite
     try:
         img_url = specs.get("GeneralInfo", {}).get("Image", {}).get("HighPic")
         if img_url:
@@ -68,10 +68,10 @@ def generate_pdf(prod_name, brand, ref, specs):
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(5)
 
-    # --- SPÉCIFICATIONS TECHNIQUES (Format Compact) ---
+    # --- SPÉCIFICATIONS TECHNIQUES ---
     if "FeaturesGroups" in specs:
-        # On ne garde que les groupes qui ne s'appellent pas "Général" pour éviter les doublons
-        groups = [g for g in specs["FeaturesGroups"] if g.get('GroupName', '').upper() != "GÉNÉRAL"] [cite: 38, 49, 56, 58]
+        # On ignore les groupes nommés "Général" pour éviter les répétitions
+        groups = [g for g in specs["FeaturesGroups"] if g.get('GroupName', '').upper() != "GÉNÉRAL"]
         
         for group in groups:
             g_name = group.get('GroupName', 'Specs')
@@ -91,16 +91,15 @@ def generate_pdf(prod_name, brand, ref, specs):
                 val = feat.get("PresentationValue", "")
                 
                 if name and val:
-                    # Nettoyage texte pour éviter les erreurs d'encodage
                     txt = f"{name}: {val}".encode('latin-1', 'replace').decode('latin-1')
-                    pdf.multi_cell(w_utile, 4, f" > {txt}") [cite: 39-48, 50-55, 60, 62-79]
+                    pdf.multi_cell(w_utile, 4, f" > {txt}")
             pdf.ln(2)
 
     # Pied de page
     pdf.set_y(-15)
     pdf.set_font("Arial", "I", 7)
     pdf.set_text_color(170, 170, 170)
-    pdf.cell(0, 10, "Document généré par WIKIDATA IT - wikidata-it.streamlit.app", align='C') [cite: 113]
+    pdf.cell(0, 10, "Document généré par WIKIDATA IT - wikidata-it.streamlit.app", align='C')
 
     return bytes(pdf.output())
 
@@ -131,7 +130,7 @@ if query:
 
         st.divider()
         
-        # Affichage Web (Accordéons)
+        # Affichage Web
         if "FeaturesGroups" in specs:
             for group in specs["FeaturesGroups"]:
                 with st.expander(f"🔹 {group.get('GroupName', 'Détails')}"):
