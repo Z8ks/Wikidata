@@ -10,103 +10,97 @@ URL = "https://xqclkymzecsyhoubtszz.supabase.co"
 KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(URL, KEY)
 
-# 3. Fonction de génération PDF "Ultra-Condensée"
-def generate_pdf(prod_name, brand, ref, specs):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=10)
-    
-    # Marges optimales
-    pdf.set_left_margin(10)
-    pdf.set_right_margin(10)
-    w_utile = pdf.w - 20
+class FicheTechnique(FPDF):
+    def header(self):
+        # Cette partie est gérée dans generate_pdf pour être dynamique
+        pass
 
-    # --- ENTÊTE : LOGO & TITRE ---
+def generate_pdf(prod_name, brand, ref, specs):
+    pdf = FicheTechnique()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # Couleurs Epson-style
+    c_bleu = (0, 51, 153)
+    c_gris_fond = (245, 245, 245)
+    
+    # --- LOGO OFFICIEL ---
     try:
-        # Logo de la marque via Clearbit
         brand_domain = f"{brand.lower().replace(' ', '')}.com"
         logo_url = f"https://logo.clearbit.com/{brand_domain}"
-        pdf.image(logo_url, x=10, y=10, w=20)
+        pdf.image(logo_url, x=10, y=10, w=25)
     except:
-        pdf.set_font("Arial", "B", 12)
-        pdf.set_xy(10, 10)
-        pdf.cell(40, 10, brand.upper())
+        pdf.set_font("Arial", "B", 16)
+        pdf.text(10, 20, brand.upper())
 
-    pdf.set_xy(10, 10)
-    pdf.set_font("Arial", "B", 16)
-    pdf.set_text_color(30, 136, 229)
-    pdf.cell(0, 10, "WIKIDATA IT", ln=True, align='R')
-    pdf.set_font("Arial", "I", 8)
-    pdf.set_text_color(150, 150, 150)
-    pdf.cell(0, 5, "LA BASE DE CONNAISSANCES HARDWARE DU MAROC", ln=True, align='R')
+    # --- TITRE PRINCIPAL ---
+    pdf.set_xy(10, 30)
+    pdf.set_font("Arial", "B", 24)
+    pdf.set_text_color(*c_bleu)
+    pdf.cell(0, 15, prod_name.upper(), ln=True)
     
+    pdf.set_font("Arial", "", 12)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 5, f"Réf: {ref} | {brand.upper()}", ln=True)
     pdf.ln(10)
 
-    # --- BLOC PRODUIT AVEC PHOTO ---
-    y_start = pdf.get_y()
+    # --- COLONNE GAUCHE (Points Forts / Image) ---
+    y_corps = pdf.get_y()
     
-    # Texte du produit (60% de la largeur)
-    pdf.set_font("Arial", "B", 14)
-    pdf.set_text_color(0, 0, 0)
-    pdf.multi_cell(w_utile * 0.6, 8, f"{prod_name}")
-    
-    pdf.set_font("Arial", "B", 9)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(w_utile * 0.6, 6, f"PN : {ref}", ln=True)
-    pdf.cell(w_utile * 0.6, 6, f"MARQUE : {brand.upper()}", ln=True)
-
-    # Image produit à droite
+    # Image Produit
     try:
         img_url = specs.get("GeneralInfo", {}).get("Image", {}).get("HighPic")
         if img_url:
-            pdf.image(img_url, x=140, y=y_start, w=45)
+            pdf.image(img_url, x=10, y=y_corps, w=60)
     except:
-        pass
+        pdf.rect(10, y_corps, 60, 45) # Cadre vide si pas d'image
+    
+    # --- COLONNE DROITE (Détails Techniques) ---
+    pdf.set_xy(75, y_corps)
+    w_col_droite = 125
 
-    pdf.set_y(y_start + 30)
-    pdf.set_draw_color(30, 136, 229)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(5)
-
-    # --- SPÉCIFICATIONS TECHNIQUES ---
     if "FeaturesGroups" in specs:
-        # On ignore les groupes nommés "Général" pour éviter les répétitions
-        groups = [g for g in specs["FeaturesGroups"] if g.get('GroupName', '').upper() != "GÉNÉRAL"]
-        
-        for group in groups:
-            g_name = group.get('GroupName', 'Specs')
+        for group in specs["FeaturesGroups"]:
+            g_name = group.get('GroupName', '').upper()
+            # On ignore les noms de groupes génériques peu esthétiques
+            if g_name in ["GÉNÉRAL", "SPECS", "INFO"]: continue
             
-            # Titre de section compact
-            pdf.set_font("Arial", "B", 9)
-            pdf.set_fill_color(240, 245, 255)
-            pdf.set_text_color(30, 136, 229)
-            pdf.cell(w_utile, 6, f" {g_name.upper()}", ln=True, fill=True)
+            # Titre de catégorie
+            pdf.set_x(75)
+            pdf.set_font("Arial", "B", 11)
+            pdf.set_text_color(*c_bleu)
+            pdf.cell(w_col_droite, 8, g_name, ln=True)
             
-            pdf.set_font("Arial", "", 8)
-            pdf.set_text_color(0, 0, 0)
+            # Ligne de séparation fine
+            pdf.set_draw_color(*c_bleu)
+            pdf.line(75, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(2)
             
-            # Affichage des caractéristiques
+            # Caractéristiques
+            pdf.set_font("Arial", "", 9)
+            pdf.set_text_color(50, 50, 50)
+            
             for feat in group.get("Features", []):
                 name = feat.get("Feature", {}).get("Name", {}).get("Value", "")
                 val = feat.get("PresentationValue", "")
-                
                 if name and val:
                     txt = f"{name}: {val}".encode('latin-1', 'replace').decode('latin-1')
-                    pdf.multi_cell(w_utile, 4, f" > {txt}")
-            pdf.ln(2)
+                    pdf.set_x(77)
+                    pdf.multi_cell(w_col_droite - 2, 5, f"- {txt}")
+            pdf.ln(4)
 
     # Pied de page
     pdf.set_y(-15)
-    pdf.set_font("Arial", "I", 7)
-    pdf.set_text_color(170, 170, 170)
-    pdf.cell(0, 10, "Document généré par WIKIDATA IT - wikidata-it.streamlit.app", align='C')
+    pdf.set_font("Arial", "B", 8)
+    pdf.set_text_color(180, 180, 180)
+    pdf.cell(0, 10, "WIKIDATA IT - LA BASE DE CONNAISSANCES HARDWARE DU MAROC", align='C')
 
     return bytes(pdf.output())
 
 # 4. Interface Streamlit
-st.markdown("<h1 style='text-align: center; color: #1E88E5;'>🌐 WIKIDATA IT</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #003399;'>🌐 WIKIDATA IT</h1>", unsafe_allow_html=True)
 
-query = st.text_input("", placeholder="Entrez une référence (PN)...")
+query = st.text_input("", placeholder="Rechercher une référence (ex: C11CJ67408)...")
 
 if query:
     res = supabase.table("it_specs_maroc").select("*").eq("ref_constructeur", query.strip()).execute()
@@ -115,28 +109,30 @@ if query:
         prod = res.data[0]
         specs = prod['specs_json']
         
-        st.success(f"**Modèle :** {prod['nom_produit']}")
-        
-        try:
-            pdf_data = generate_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], specs)
-            st.download_button(
-                label="📥 Télécharger la Fiche Technique",
-                data=pdf_data,
-                file_name=f"Fiche_{prod['ref_constructeur']}.pdf",
-                mime="application/pdf"
-            )
-        except Exception as e:
-            st.error(f"Erreur PDF : {e}")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.subheader(f"{prod['nom_produit']}")
+        with col2:
+            try:
+                pdf_data = generate_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], specs)
+                st.download_button(
+                    label="📄 Télécharger la Brochure",
+                    data=pdf_data,
+                    file_name=f"Brochure_{prod['ref_constructeur']}.pdf",
+                    mime="application/pdf"
+                )
+            except Exception as e:
+                st.error(f"Erreur : {e}")
 
         st.divider()
         
-        # Affichage Web
+        # Affichage Web interactif
         if "FeaturesGroups" in specs:
             for group in specs["FeaturesGroups"]:
-                with st.expander(f"🔹 {group.get('GroupName', 'Détails')}"):
+                with st.expander(f"🔍 {group.get('GroupName', 'Caractéristiques')}"):
                     for feat in group.get("Features", []):
                         n = feat.get("Feature", {}).get("Name", {}).get("Value")
                         v = feat.get("PresentationValue")
                         if n and v: st.write(f"**{n} :** {v}")
     else:
-        st.error("Référence inconnue.")
+        st.error("Produit introuvable.")
