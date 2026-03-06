@@ -75,7 +75,9 @@ def generate_pdf(prod_name, brand, ref, specs):
     pdf.set_text_color(150, 150, 150)
     pdf.cell(0, 10, "Document généré par WIKIDATA IT - wikidata-it.streamlit.app", align='C')
             
-    return pdf.output(dest='S')
+    # On force la conversion en bytes pour éviter l'erreur de format binaire
+    pdf_output = pdf.output()
+    return bytes(pdf_output)
 
 # 4. Interface Utilisateur Streamlit
 st.markdown("<h1 style='text-align: center; color: #1E88E5;'>🌐 WIKIDATA IT</h1>", unsafe_allow_html=True)
@@ -95,9 +97,14 @@ if query:
         
         st.success(f"**{prod['nom_produit']}**")
         
-        # Bouton de téléchargement PDF
+# Génération et bouton PDF
         try:
             pdf_bytes = generate_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], specs)
+            
+            # Vérification de sécurité pour Streamlit
+            if isinstance(pdf_bytes, bytearray):
+                pdf_bytes = bytes(pdf_bytes)
+
             st.download_button(
                 label="📥 Télécharger la Fiche PDF WIKIDATA",
                 data=pdf_bytes,
@@ -105,9 +112,7 @@ if query:
                 mime="application/pdf"
             )
         except Exception as e:
-            st.error(f"Note : Le PDF n'a pas pu être généré pour cette fiche : {e}")
-        
-        st.divider()
+            st.error(f"Note : Le PDF n'a pas pu être généré : {e}")
         
         # Affichage des catégories techniques sur le site
         if "FeaturesGroups" in specs:
