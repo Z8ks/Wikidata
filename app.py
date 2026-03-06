@@ -16,112 +16,66 @@ def generate_pdf(prod_name, brand, ref, specs):
     pdf = FPDF()
     pdf.add_page()
     
-    # Marges de sécurité
+    # Marges et largeur utile
     pdf.set_left_margin(15)
     pdf.set_right_margin(15)
     w_utile = pdf.w - 2 * pdf.l_margin
     
-    # --- LOGO STYLISÉ WIKIDATA ---
-    pdf.set_fill_color(30, 136, 229) # Bleu Royal
-    pdf.rect(0, 0, 210, 35, 'F') # Bandeau de tête
-    
-    pdf.set_xy(15, 12)
-    pdf.set_font("Arial", "B", 24)
-    pdf.set_text_color(255, 255, 255) # Blanc
+    # --- BANDEAU ENTÊTE ---
+    pdf.set_fill_color(30, 136, 229) 
+    pdf.rect(0, 0, 210, 40, 'F')
+    pdf.set_xy(15, 15)
+    pdf.set_font("Arial", "B", 22)
+    pdf.set_text_color(255, 255, 255)
     pdf.cell(0, 10, "WIKIDATA IT", ln=True)
-    
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 5, "LA BASE DE CONNAISSANCES HARDWARE DU MAROC", ln=True)
-    pdf.ln(15) # Espace après le bandeau
     
-    # --- INFOS PRODUIT ---
+    pdf.ln(20) # Espace après le bandeau
+    
+    # --- INFOS PRODUIT (CORRIGÉ) ---
     pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", "B", 14)
+    pdf.set_font("Arial", "B", 16)
+    # multi_cell empêche le nom de se couper
     pdf.multi_cell(w_utile, 10, f"FICHE TECHNIQUE : {prod_name}")
     
-    pdf.set_font("Arial", "B", 11)
+    pdf.ln(2)
+    pdf.set_font("Arial", "B", 12)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(w_utile, 8, f"MARQUE : {brand} | PN : {ref}", ln=True)
-    pdf.ln(5)
+    # On sépare Marque et PN pour plus de clarté
+    pdf.cell(w_utile/2, 10, f"MARQUE : {brand}")
+    pdf.cell(w_utile/2, 10, f"RÉF : {ref}", ln=True, align='R')
     
-    # --- CARACTÉRISTIQUES (Filtrage des données Icecat) ---
+    pdf.ln(5)
+    pdf.set_draw_color(30, 136, 229)
+    pdf.line(15, pdf.get_y(), 195, pdf.get_y()) # Ligne de séparation bleue
+    pdf.ln(5)
+
+    # --- TABLEAU DES SPÉCIFICATIONS ---
     if "FeaturesGroups" in specs:
-        for group in specs["FeaturesGroups"][:10]:
-            g_name = group.get('GroupName', 'Info').encode('latin-1', 'replace').decode('latin-1')
+        for group in specs["FeaturesGroups"]:
+            g_name = group.get('GroupName', 'Caractéristiques')
             
-            # Titre de catégorie
-            pdf.set_font("Arial", "B", 11)
-            pdf.set_fill_color(230, 240, 255)
+            # Titre de la section
+            pdf.set_font("Arial", "B", 12)
+            pdf.set_fill_color(240, 245, 255)
             pdf.set_text_color(30, 136, 229)
-            pdf.cell(w_utile, 8, f" {g_name.upper()} ", ln=True, fill=True)
+            pdf.cell(w_utile, 9, f" {g_name.upper()}", ln=True, fill=True)
+            pdf.ln(2)
             
-            # Liste des caractéristiques
-            pdf.set_font("Arial", "", 9)
+            # Liste des caractéristiques (Format "Nom : Valeur")
+            pdf.set_font("Arial", "", 10)
             pdf.set_text_color(0, 0, 0)
+            
             for feat in group.get("Features", []):
                 name = feat.get("Feature", {}).get("Name", {}).get("Value", "")
                 val = feat.get("PresentationValue", "")
                 
                 if name and val:
-                    # On nettoie le texte pour éviter les erreurs de caractères spéciaux
-                    txt = f"{name}: {val}".encode('latin-1', 'replace').decode('latin-1')
-                    # multi_cell gère les retours à la ligne automatiques
-                    pdf.multi_cell(w_utile, 6, txt, border='B') 
-            pdf.ln(4)
+                    # On utilise multi_cell pour chaque ligne pour éviter "Technolog..."
+                    text = f"- {name} : {val}".encode('latin-1', 'replace').decode('latin-1')
+                    pdf.multi_cell(w_utile, 7, text)
             
-    # Pied de page
-    pdf.set_y(-20)
-    pdf.set_font("Arial", "I", 8)
-    pdf.set_text_color(150, 150, 150)
-    pdf.cell(0, 10, "Document généré par WIKIDATA IT - wikidata-it.streamlit.app", align='C')
-            
-    # On force la conversion en bytes pour éviter l'erreur de format binaire
-    pdf_output = pdf.output()
-    return bytes(pdf_output)
+            pdf.ln(5) # Espace entre les groupes
 
-# 4. Interface Utilisateur Streamlit
-st.markdown("<h1 style='text-align: center; color: #1E88E5;'>🌐 WIKIDATA IT</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Consultation technique hardware pour les professionnels</p>", unsafe_allow_html=True)
-
-query = st.text_input("", placeholder="Rechercher une référence constructeur (ex: C11CJ67408)...")
-
-if query:
-    query_clean = query.strip()
-    with st.spinner('Recherche dans la base...'):
-        # On interroge Supabase
-        res = supabase.table("it_specs_maroc").select("*").eq("ref_constructeur", query_clean).execute()
-    
-    if res.data:
-        prod = res.data[0]
-        specs = prod['specs_json']
-        
-        st.success(f"**{prod['nom_produit']}**")
-        
-# Génération et bouton PDF
-        try:
-            pdf_bytes = generate_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], specs)
-            
-            # Vérification de sécurité pour Streamlit
-            if isinstance(pdf_bytes, bytearray):
-                pdf_bytes = bytes(pdf_bytes)
-
-            st.download_button(
-                label="📥 Télécharger la Fiche PDF WIKIDATA",
-                data=pdf_bytes,
-                file_name=f"WIKIDATA_{prod['ref_constructeur']}.pdf",
-                mime="application/pdf"
-            )
-        except Exception as e:
-            st.error(f"Note : Le PDF n'a pas pu être généré : {e}")
-        
-        # Affichage des catégories techniques sur le site
-        if "FeaturesGroups" in specs:
-            for group in specs["FeaturesGroups"]:
-                with st.expander(f"🔹 {group.get('GroupName', 'Détails')}"):
-                    for feature in group.get("Features", []):
-                        n = feature.get("Feature", {}).get("Name", {}).get("Value")
-                        v = feature.get("PresentationValue")
-                        if n and v: 
-                            st.write(f"**{n} :** {v}")
-    else:
-        st.error("Cette référence n'est pas encore répertoriée. WIKIDATA s'enrichit chaque jour !")
+    return bytes(pdf.output())
