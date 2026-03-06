@@ -1,3 +1,17 @@
+import streamlit as st
+from supabase import create_client
+from fpdf import FPDF
+
+# 1. Configuration WIKIDATA IT
+st.set_page_config(page_title="WIKIDATA IT", page_icon="🌐", layout="centered")
+
+# 2. Connexion Supabase
+# Assure-toi que SUPABASE_KEY est bien dans tes Secrets Streamlit
+URL = "https://xqclkymzecsyhoubtszz.supabase.co"
+KEY = st.secrets["SUPABASE_KEY"]
+supabase = create_client(URL, KEY)
+
+# 3. Fonction de génération du PDF
 def generate_pdf(prod_name, brand, ref, specs):
     pdf = FPDF()
     pdf.add_page()
