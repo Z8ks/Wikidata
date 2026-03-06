@@ -1,54 +1,72 @@
 import streamlit as st
 from supabase import create_client
+from fpdf import FPDF
 
-# Configuration WIKIDATA
-st.set_page_config(page_title="WIKIDATA IT", page_icon="🌐", layout="centered")
+# Configuration WIKIDATA IT
+st.set_page_config(page_title="WIKIDATA IT", page_icon="🌐")
 
-# Design du Header
-st.markdown("<h1 style='text-align: center; color: #1E88E5;'>🌐 WIKIDATA IT</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>La base de connaissances hardware du Maroc</p>", unsafe_allow_html=True)
-st.divider()
-
-# Initialisation Supabase (Utilise ton Project ID de l'image d6a4e4)
+# Initialisation Supabase
 URL = "https://xqclkymzecsyhoubtszz.supabase.co"
 KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(URL, KEY)
 
-# Interface de recherche
+# --- FONCTION GÉNÉRATION PDF ---
+def generate_pdf(prod_name, brand, ref, specs):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(200, 10, f"FICHE TECHNIQUE : {prod_name}", ln=True, align='C')
+    pdf.set_font("Arial", "I", 12)
+    pdf.cell(200, 10, f"Propulsé par WIKIDATA IT - Maroc", ln=True, align='C')
+    pdf.ln(10)
+    
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, f"Marque : {brand}", ln=True)
+    pdf.cell(0, 10, f"Référence : {ref}", ln=True)
+    pdf.ln(5)
+    
+    pdf.set_font("Arial", "", 10)
+    if "FeaturesGroups" in specs:
+        for group in specs["FeaturesGroups"][:5]: # On limite aux 5 premiers groupes pour le PDF
+            pdf.set_font("Arial", "B", 11)
+            pdf.cell(0, 10, f"--- {group.get('GroupName', 'Info')} ---", ln=True)
+            pdf.set_font("Arial", "", 10)
+            for feat in group.get("Features", [])[:10]:
+                name = feat.get("Feature", {}).get("Name", {}).get("Value")
+                val = feat.get("PresentationValue")
+                if name and val:
+                    pdf.multi_cell(0, 7, f"{name}: {val}")
+    return pdf.output(dest='S')
+
+# --- INTERFACE ---
+st.markdown("<h1 style='text-align: center;'>🌐 WIKIDATA IT</h1>", unsafe_allow_html=True)
 query = st.text_input("", placeholder="Rechercher une référence (ex: C11CJ67408)...")
 
 if query:
-    query_clean = query.strip()
-    with st.spinner(f'Recherche de {query_clean}...'):
-        res = supabase.table("it_specs_maroc").select("*").eq("ref_constructeur", query_clean).execute()
+    res = supabase.table("it_specs_maroc").select("*").eq("ref_constructeur", query.strip()).execute()
     
     if res.data:
         prod = res.data[0]
         specs = prod['specs_json']
         
-        # Message de succès avec le nom commercial
-        st.success(f"**Modèle trouvé :** {prod['nom_produit']}")
+        st.success(f"**Modèle :** {prod['nom_produit']}")
         
-        # --- NOUVEL AFFICHAGE ÉPURÉ (WIKIDATA STYLE) ---
-        col_info, col_btn = st.columns([3, 1])
-        with col_info:
-            st.subheader("📋 Fiche Technique Professionnelle")
-        
-        # On organise par catégories (Expanders)
+        # Bouton PDF
+        pdf_data = generate_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], specs)
+        st.download_button(
+            label="📥 Télécharger la Fiche PDF",
+            data=pdf_data,
+            file_name=f"WIKIDATA_{prod['ref_constructeur']}.pdf",
+            mime="application/pdf"
+        )
+
+        # Affichage catégories (Expanders)
         if "FeaturesGroups" in specs:
             for group in specs["FeaturesGroups"]:
-                group_name = group.get("GroupName", "Information")
-                
-                # Création d'un volet déroulant par catégorie (ex: Impression, Scan, Connectivité)
-                with st.expander(f"🔹 {group_name}", expanded=(group_name == "GeneralInfo")):
+                with st.expander(f"🔹 {group.get('GroupName', 'Détails')}"):
                     for feature in group.get("Features", []):
-                        name = feature.get("Feature", {}).get("Name", {}).get("Value")
-                        value = feature.get("PresentationValue")
-                        if name and value:
-                            # Affichage propre Nom : Valeur
-                            st.write(f"**{name} :** {value}")
-        else:
-            st.info("Les détails techniques de ce produit sont simplifiés.")
-            
+                        n = feature.get("Feature", {}).get("Name", {}).get("Value")
+                        v = feature.get("PresentationValue")
+                        if n and v: st.write(f"**{n} :** {v}")
     else:
-        st.error("Cette référence n'est pas encore dans la base WIKIDATA.")
+        st.error("Référence non trouvée.")
