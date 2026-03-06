@@ -36,3 +36,42 @@ if query:
             st.json(prod['specs_json'])
     else:
         st.error("Cette référence n'est pas encore répertoriée. WIKIDATA s'enrichit chaque jour !")
+        # ... (gardez le début du code identique)
+
+if res.data:
+    prod = res.data[0]
+    specs = prod['specs_json'] # On récupère le dictionnaire complet
+
+    st.success(f"**Produit trouvé :** {prod['nom_produit']}")
+    
+    # Création d'onglets pour une navigation fluide
+    tab1, tab2 = st.tabs(["📋 Fiche Résumée", "💻 Données Brutes"])
+
+    with tab1:
+        # Extraction intelligente des caractéristiques principales
+        # Note : Les clés dépendent de la structure d'Icecat
+        info = specs.get("GeneralInfo", {})
+        
+        st.subheader("Caractéristiques Principales")
+        col_a, col_b = st.columns(2)
+        
+        with col_a:
+            st.write(f"**Modèle :** {info.get('ProductName', 'N/A')}")
+            st.write(f"**Marque :** {prod['marque']}")
+        
+        with col_b:
+            st.write(f"**Référence :** {prod['ref_constructeur']}")
+            st.write(f"**Catégorie :** {info.get('Category', {}).get('Name', {}).get('Value', 'Hardware')}")
+
+        # Affichage des spécifications sous forme de tableau
+        if "FeaturesGroups" in specs:
+            st.subheader("Détails Techniques")
+            for group in specs["FeaturesGroups"]:
+                with st.expander(group.get("GroupName", "Spécifications")):
+                    for feature in group.get("Features", []):
+                        name = feature.get("Feature", {}).get("Name", {}).get("Value")
+                        value = feature.get("PresentationValue")
+                        st.write(f"**{name} :** {value}")
+
+    with tab2:
+        st.json(specs)
