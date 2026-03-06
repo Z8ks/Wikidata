@@ -200,12 +200,21 @@ def generate_pdf(prod_name: str, brand: str, ref: str, specs: Dict[str, Any]) ->
     normalized_specs = normalize_specs(specs)
     badges = compute_badges(normalized_specs, prod_name)
     logo_url = get_brand_logo_url(brand)
+
     pdf = PremiumBrochure(orientation="P", unit="mm", format="A4")
+
     draw_header(pdf, brand=brand, prod_name=prod_name, ref=ref, logo_url=logo_url)
     draw_badges(pdf, badges)
     draw_body(pdf, normalized_specs)
-    return pdf.output(dest="S")  # ← Plus d'encode() !
 
+    # ✅ CORRECTION DÉFINITIVE : bytearray → bytes
+    pdf_output = pdf.output(dest="S")
+    if isinstance(pdf_output, bytearray):
+        pdf_bytes = bytes(pdf_output)  # Conversion explicite
+    else:
+        pdf_bytes = pdf_output
+    
+    return pdf_bytes
 # -----------------------------
 # 5. INTERFACE STREAMLIT (inchangée)
 # -----------------------------
