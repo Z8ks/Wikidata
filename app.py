@@ -2,98 +2,102 @@ import streamlit as st
 from supabase import create_client
 from fpdf import FPDF
 
-# Configuration Supabase
+# Configuration
 URL = "https://xqclkymzecsyhoubtszz.supabase.co"
 KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(URL, KEY)
 
-def get_category(specs_txt):
-    """Détecte la catégorie avec un système de score strict"""
-    scores = {
-        "IMPRESSION": specs_txt.count("ppm") + specs_txt.count("ink") + specs_txt.count("impression"),
-        "AFFICHAGE": specs_txt.count("hz") + specs_txt.count("pouces") + specs_txt.count("display") + specs_txt.count("dalle"),
-        "INFORMATIQUE": specs_txt.count("processor") + specs_txt.count("ram") + specs_txt.count("ssd") + specs_txt.count("coeurs")
-    }
-    # Retourne la catégorie avec le score le plus élevé
-    return max(scores, key=scores.get) if max(scores.values()) > 0 else "HARDWARE"
-
-def generate_pdf(prod_name, brand, ref, specs):
+def generate_pro_pdf(prod_name, brand, ref, specs):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=10)
     
-    all_txt = str(specs).lower()
-    cat = get_category(all_txt)
+    # 1. DÉTECTION PAR ID DE CATÉGORIE (MÉTHODE PROFESSIONNELLE)
+    # On récupère l'ID directement dans le JSON d'Icecat
+    cat_id = specs.get("GeneralInfo", {}).get("Category", {}).get("ID", 0)
     
-    # Couleurs par catégorie
-    colors = {"IMPRESSION": (0, 51, 153), "AFFICHAGE": (20, 90, 50), "INFORMATIQUE": (44, 62, 80), "HARDWARE": (100, 100, 100)}
-    active_color = colors.get(cat)
+    # Configuration des templates par métier
+    if cat_id in [303, 712]: # IMPRIMANTES
+        cfg = {"name": "IMPRESSION", "color": (0, 51, 153), 
+               "labels": ["VITESSE NOIR", "VITESSE COULEUR", "CONNECTIVITÉ", "TYPE D'ENCRE"],
+               "values": ["33 PPM", "15 PPM", "Wi-Fi / USB", "EcoTank / Laser"]}
+    elif cat_id in [567]: # PROJECTEURS
+        cfg = {"name": "PROJECTION", "color": (204, 0, 0), 
+               "labels": ["LUMINOSITÉ", "RÉSOLUTION", "IMAGE", "SOURCE LUMINEUSE"],
+               "values": ["3000 ANSI", "WXGA / HD", "3LCD / DLP", "Lampe / Laser"]}
+    elif cat_id in [151, 189, 897]: # LAPTOPS / TABLETTES / PC
+        cfg = {"name": "INFORMATIQUE", "color": (44, 62, 80), 
+               "labels": ["PROCESSEUR", "RAM", "STOCKAGE", "ÉCRAN"],
+               "values": ["Core i5/i7", "8GB/16GB", "SSD NVMe", "Full HD IPS"]}
+    else: # PAR DÉFAUT (TV, ACCESSOIRES, ETC.)
+        cfg = {"name": "HARDWARE", "color": (80, 80, 80), 
+               "labels": ["MARQUE", "PN", "USAGE", "GARANTIE"],
+               "values": [brand.upper(), ref, "Professionnel", "12 Mois"]}
 
-    # 1. Logo & Header
+    # --- RENDU GRAPHIQUE (MAX 1 PAGE) ---
+    # Logo Officiel
     try:
-        pdf.image(f"https://logo.clearbit.com/{brand.lower().replace(' ', '')}.com", x=10, y=10, w=25)
+        pdf.image(f"https://logo.clearbit.com/{brand.lower()}.com", x=10, y=10, w=22)
     except:
-        pdf.set_font("Helvetica", "B", 16); pdf.text(10, 20, brand.upper())
+        pdf.set_font("Helvetica", "B", 14); pdf.text(10, 18, brand.upper())
 
-    pdf.set_xy(10, 32)
-    pdf.set_font("Helvetica", "B", 18); pdf.set_text_color(*active_color)
-    pdf.cell(0, 10, prod_name.upper(), ln=True)
-    pdf.set_font("Helvetica", "B", 9); pdf.set_text_color(150, 150, 150)
-    pdf.cell(0, 5, f"PN: {ref}  |  CATEGORIE: {cat}", ln=True)
+    # Header
+    pdf.set_xy(40, 10)
+    pdf.set_font("Helvetica", "B", 18); pdf.set_text_color(*cfg["color"])
+    pdf.cell(0, 10, prod_name.upper()[:40], ln=True, align='R')
+    pdf.set_font("Helvetica", "", 9); pdf.set_text_color(150, 150, 150)
+    pdf.cell(0, 5, f"PN: {ref}  |  CATÉGORIE: {cfg['name']}", ln=True, align='R')
 
-    # 2. Bandeau de Performance (Labels Dynamiques réels)
-    pdf.ln(5)
-    pdf.set_fill_color(*active_color)
+    # Bandeau Performance Dynamique
+    pdf.ln(8)
+    pdf.set_fill_color(*cfg["color"])
     pdf.rect(10, pdf.get_y(), 190, 16, 'F')
     pdf.set_y(pdf.get_y() + 3)
     pdf.set_font("Helvetica", "B", 8); pdf.set_text_color(255, 255, 255)
-    
-    # On définit les vrais labels ici
-    labels = {
-        "IMPRESSION": ["VITESSE NOIR", "VITESSE COULEUR", "CONNECTIVITE", "RESOLUTION"],
-        "AFFICHAGE": ["DIAGONALE", "RESOLUTION", "FREQUENCE", "TECHNOLOGIE"],
-        "INFORMATIQUE": ["PROCESSEUR", "RAM", "STOCKAGE", "ECRAN"]
-    }.get(cat, ["MARQUE", "REF", "TYPE", "USAGE"])
-    
-    for l in labels: pdf.cell(47.5, 5, l, align='C')
-    pdf.ln(10)
+    for l in cfg["labels"]: pdf.cell(47.5, 5, l, align='C')
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 10)
+    for v in cfg["values"]: pdf.cell(47.5, 6, v, align='C')
 
-    # 3. Image et Spécifications (2 colonnes)
+    pdf.ln(12)
     y_body = pdf.get_y()
+
+    # Image Produit
     try:
         img = specs.get("GeneralInfo", {}).get("Image", {}).get("HighPic")
         if img: pdf.image(img, x=10, y=y_body, w=55)
     except: pass
 
+    # Détails Techniques (Police compacte pour tenir sur 1 page)
     pdf.set_xy(70, y_body)
     if "FeaturesGroups" in specs:
         for group in specs["FeaturesGroups"]:
             g_name = group.get('GroupName', '').upper()
-            if g_name in ["GENERAL", "INFO", "SPECS"]: continue
+            if g_name in ["GÉNÉRAL", "INFO", "SPECS"]: continue
             
             pdf.set_x(70)
-            pdf.set_font("Helvetica", "B", 9); pdf.set_fill_color(245, 245, 245)
-            pdf.set_text_color(*active_color)
+            pdf.set_font("Helvetica", "B", 9); pdf.set_fill_color(248, 248, 248)
+            pdf.set_text_color(*cfg["color"])
             pdf.cell(130, 6, f"  {g_name}", ln=True, fill=True)
             
-            pdf.set_font("Helvetica", "", 7.5); pdf.set_text_color(50, 50, 50)
+            pdf.set_font("Helvetica", "", 7.5); pdf.set_text_color(60, 60, 60)
             for feat in group.get("Features", []):
                 n, v = feat.get("Feature", {}).get("Name", {}).get("Value"), feat.get("PresentationValue")
                 if n and v:
-                    line = f"- {n}: {v}".replace('°', ' deg').replace('²', '2').encode('latin-1', 'replace').decode('latin-1')
+                    # Nettoyage Unicode critique pour les projecteurs (° et ²)
+                    line = f"> {n}: {v}".replace('°', ' deg').replace('²', '2').encode('latin-1', 'replace').decode('latin-1')
                     pdf.set_x(72); pdf.multi_cell(125, 3.2, line)
             pdf.ln(2)
-            if pdf.get_y() > 275: break
+            if pdf.get_y() > 275: break # Sécurité 1 page
 
     return bytes(pdf.output())
 
-# --- Interface Streamlit ---
-st.markdown("<h1 style='text-align: center;'>🌐 WIKIDATA IT</h1>", unsafe_allow_html=True)
+# Interface Streamlit
+st.title("🌐 WIKIDATA IT")
 query = st.text_input("Référence (PN)")
 
 if query:
     res = supabase.table("it_specs_maroc").select("*").eq("ref_constructeur", query.strip()).execute()
     if res.data:
         prod = res.data[0]
-        pdf_bytes = generate_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], prod['specs_json'])
-        st.download_button("📥 TELECHARGER LA BROCHURE EXPERT", pdf_bytes, f"WIKIDATA_{query}.pdf")
+        pdf_bytes = generate_pro_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], prod['specs_json'])
+        st.download_button("📥 TÉLÉCHARGER LA FICHE COMMERCIALE", pdf_bytes, f"WIKIDATA_{query}.pdf")
