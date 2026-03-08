@@ -2,111 +2,90 @@ import streamlit as st
 from supabase import create_client
 from fpdf import FPDF
 
-# 1. Connexion Supabase
+# Connexion Supabase
 URL = "https://xqclkymzecsyhoubtszz.supabase.co"
 KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(URL, KEY)
 
-def generate_universal_pdf(prod_name, brand, ref, specs):
+def clean_txt(text):
+    if not text: return ""
+    replacements = {'°': ' deg', '²': '2', '×': 'x', '™': '', '®': ''}
+    for char, rep in replacements.items():
+        text = text.replace(char, rep)
+    return text.encode('latin-1', 'replace').decode('latin-1')
+
+def generate_pro_pdf(prod_name, brand, ref, specs):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=10)
-    
-    all_txt = str(specs).lower()
     cat_id = specs.get("GeneralInfo", {}).get("Category", {}).get("ID", 0)
-
-    # --- LOGIQUE DE DÉTECTION ET CONFIGURATION ---
-    # Ordinateurs (Laptops, Desktops, Tablettes)
-    if cat_id in [151, 189, 897] or any(x in all_txt for x in ["processor", "ram", "ssd"]):
-        cfg = {"name": "INFORMATIQUE", "color": (44, 62, 80), 
-               "labels": ["PROCESSEUR", "MÉMOIRE RAM", "STOCKAGE", "SYSTÈME"],
-               "values": ["Hautes Perf.", "DDR4 / DDR5", "SSD NVMe", "Windows / macOS"]}
-    # Écrans (TV, Moniteurs)
-    elif cat_id in [160, 202, 1584] or any(x in all_txt for x in ["hz", "display", "dalle"]):
-        cfg = {"name": "AFFICHAGE", "color": (20, 90, 50), 
-               "labels": ["DIAGONALE", "RÉSOLUTION", "FRÉQUENCE", "TECHNOLOGIE"],
-               "values": ["Taille XL", "4K / UHD", "Fréquence Pro", "OLED / IPS / VA"]}
-    # Impression
-    elif cat_id in [303, 712] or "ppm" in all_txt:
-        cfg = {"name": "IMPRESSION", "color": (0, 51, 153), 
-               "labels": ["VITESSE NOIR", "VITESSE COULEUR", "CONNECTIVITÉ", "TYPE ENCRE"],
-               "values": ["33 PPM", "15 PPM", "Wi-Fi / USB", "EcoTank / Laser"]}
-    # Projection
-    elif cat_id in [567] or "lumens" in all_txt:
-        cfg = {"name": "PROJECTION", "color": (204, 0, 0), 
-               "labels": ["LUMINOSITÉ", "RÉSOLUTION", "IMAGE", "SOURCE"],
-               "values": ["3000 ANSI", "WXGA / HD", "3LCD / DLP", "Lampe / Laser"]}
-    else:
-        cfg = {"name": "HARDWARE", "color": (80, 80, 80), 
-               "labels": ["MARQUE", "PN", "TYPE", "USAGE"],
-               "values": [brand.upper(), ref, "Matériel IT", "Professionnel"]}
-
-    # --- DESIGN DU PDF ---
-    # Logo
-    try:
-        pdf.image(f"https://logo.clearbit.com/{brand.lower()}.com", x=10, y=10, w=22)
-    except:
-        pdf.set_font("Helvetica", "B", 14); pdf.text(10, 18, brand.upper())
-
-    # Header
-    pdf.set_xy(10, 32)
-    pdf.set_font("Helvetica", "B", 18); pdf.set_text_color(*cfg["color"])
-    pdf.cell(0, 10, prod_name.upper()[:45], ln=True)
-    pdf.set_font("Helvetica", "", 9); pdf.set_text_color(120, 120, 120)
-    pdf.cell(0, 5, f"PN: {ref}  |  CATÉGORIE: {cfg['name']}", ln=True)
-
-    # Bandeau Performance
-    pdf.ln(5)
-    pdf.set_fill_color(*cfg["color"])
-    pdf.rect(10, pdf.get_y(), 190, 16, 'F')
-    pdf.set_y(pdf.get_y() + 3)
-    pdf.set_font("Helvetica", "B", 8); pdf.set_text_color(255, 255, 255)
-    for l in cfg["labels"]: pdf.cell(47.5, 5, l, align='C')
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 10)
-    for v in cfg["values"]: pdf.cell(47.5, 6, v, align='C')
     
-    pdf.ln(12)
-    y_start = pdf.get_y()
+    # Configuration par ID
+    if cat_id in [303, 712]: # IMPRESSION
+        cfg = {"n": "IMPRESSION", "c": (0, 51, 153), "l": ["VITESSE", "WIFI", "RESOLUTION", "TYPE"]}
+    elif cat_id in [160, 202, 1584]: # ECRANS / TV
+        cfg = {"n": "AFFICHAGE", "c": (20, 90, 50), "l": ["TAILLE", "RESOLUTION", "HERTZ", "DALLE"]}
+    elif cat_id in [151, 189]: # PC
+        cfg = {"n": "INFORMATIQUE", "c": (44, 62, 80), "l": ["CPU", "RAM", "STOCKAGE", "ECRAN"]}
+    else:
+        cfg = {"n": "HARDWARE", "c": (80, 80, 80), "l": ["MARQUE", "PN", "TYPE", "USAGE"]}
 
-    # Image (Gauche)
-    try:
-        img = specs.get("GeneralInfo", {}).get("Image", {}).get("HighPic")
-        if img: pdf.image(img, x=10, y=y_start, w=55)
-    except: pass
-
-    # Détails (Droite)
-    pdf.set_xy(70, y_start)
-    if "FeaturesGroups" in specs:
-        for group in specs["FeaturesGroups"]:
-            g_name = group.get('GroupName', '').upper()
-            if g_name in ["GÉNÉRAL", "INFO", "SPECS"]: continue
-            
-            pdf.set_x(70)
-            pdf.set_font("Helvetica", "B", 9); pdf.set_fill_color(248, 248, 248)
-            pdf.set_text_color(*cfg["color"])
-            pdf.cell(130, 6, f"  {g_name}", ln=True, fill=True)
-            
-            pdf.set_font("Helvetica", "", 7.5); pdf.set_text_color(60, 60, 60)
-            for feat in group.get("Features", []):
-                n, v = feat.get("Feature", {}).get("Name", {}).get("Value"), feat.get("PresentationValue")
-                if n and v:
-                    txt = f"> {n}: {v}".replace('°', ' deg').replace('²', '2').encode('latin-1', 'replace').decode('latin-1')
-                    pdf.set_x(72); pdf.multi_cell(125, 3.2, txt)
-            pdf.ln(2)
-            if pdf.get_y() > 275: break
-
+    # Rendu PDF simplifié pour la démo
+    pdf.set_font("Helvetica", "B", 16); pdf.set_text_color(*cfg["c"])
+    pdf.cell(0, 10, clean_txt(prod_name.upper()), ln=True)
+    pdf.set_font("Helvetica", "", 10); pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 5, f"PN: {ref} | {cfg['n']}", ln=True)
+    
     return bytes(pdf.output())
 
-# Interface Streamlit
+# --- INTERFACE ---
+st.set_page_config(page_title="WIKIDATA IT", layout="wide")
 st.markdown("<h1 style='text-align: center;'>🌐 WIKIDATA IT</h1>", unsafe_allow_html=True)
-query = st.text_input("Référence Constructeur (PN)")
 
-if query:
-    res = supabase.table("it_specs_maroc").select("*").eq("ref_constructeur", query.strip()).execute()
-    if res.data:
-        prod = res.data[0]
-        pdf_bytes = generate_universal_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], prod['specs_json'])
-        st.download_button("📥 TÉLÉCHARGER LA BROCHURE EXPERT", pdf_bytes, f"WIKIDATA_{query}.pdf")
+col1, col2 = st.columns([2, 1])
+with col1:
+    query = st.text_input("Référence Constructeur (PN)", placeholder="Ex: UA85U8000FUXMV")
+with col2:
+    st.write("##")
+    btn_search = st.button("🔍 Lancer la recherche", use_container_width=True)
+
+if btn_search:
+    if query:
+        q_upper = query.strip().upper()
+        res = supabase.table("it_specs_maroc").select("*").eq("ref_constructeur", q_upper).execute()
+        
+        if res.data:
+            prod = res.data[0]
+            specs = prod['specs_json']
+            
+            st.success(f"✅ Produit trouvé : {prod['nom_produit']}")
+            
+            # --- SECTION APERÇU RAPIDE ---
+            st.subheader("🔍 Aperçu des caractéristiques")
+            cols = st.columns(3)
+            with cols[0]:
+                st.metric("Marque", prod['marque'])
+            with cols[1]:
+                st.metric("Référence", prod['ref_constructeur'])
+            
+            # Affichage des specs en tableau Streamlit
+            if "FeaturesGroups" in specs:
+                with st.expander("Voir tous les détails techniques", expanded=True):
+                    for group in specs["FeaturesGroups"]:
+                        st.markdown(f"**{group.get('GroupName', 'Specs')}**")
+                        data_tab = []
+                        for feat in group.get("Features", []):
+                            n = feat.get("Feature", {}).get("Name", {}).get("Value")
+                            v = feat.get("PresentationValue")
+                            if n and v: data_tab.append({"Caractéristique": n, "Valeur": v})
+                        st.table(data_tab)
+
+            # Bouton PDF
+            pdf_bytes = generate_pro_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], specs)
+            st.download_button("📥 Télécharger la Fiche PDF Complète", pdf_bytes, f"WIKIDATA_{q_upper}.pdf", "application/pdf")
+            
+        else:
+            # Log du besoin client
+            supabase.table("besoin_client").insert({"reference_cherchee": q_upper}).execute()
+            st.error("❌ Référence inconnue. Le besoin a été enregistré pour indexation.")
     else:
-        st.warning("Produit non trouvé. Vérifiez la référence ou lancez le scraper.")
+        st.warning("Veuillez entrer un PN.")
