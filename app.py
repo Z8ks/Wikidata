@@ -201,6 +201,4 @@ with st.sidebar:
     **1.** Saisis PN (ex: C11CJ68501)
     **2.** Clique 🔍
     **3.** 📥 Fiche PDF pro !
-    
-    **✅ Fonctionne avec ta base Supabase**
     """)
