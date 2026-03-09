@@ -1,165 +1,134 @@
 import streamlit as st
 from supabase import create_client
 from fpdf import FPDF
-import os
 
-# TES PARAMÈTRES SUPABASE (déjà dans ton code)
+# TES params Supabase
 URL = "https://xqclkymzecsyhoubtszz.supabase.co"
-KEY = st.secrets["SUPABASE_KEY"]  # Garde tes secrets
+KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(URL, KEY)
 
-def clean_txt(text):
-    if not text: return ""
-    replacements = {'°': '°', '²': '^2', '×': 'x', '™': '', '®': '', 'µ': 'u'}
-    for char, rep in replacements.items():
-        text = str(text).replace(char, rep)
-    return text[:120]
-
-class TechPDF(FPDF):
-    def header(self):
-        self.set_fill_color(0, 71, 155)
-        self.rect(0, 0, 210, 8, 'F')
-
-from fpdf import FPDF
-
-def clean_txt(text):
-    """Nettoie STRICT ASCII pour Helvetica"""
+def clean_ascii(text):
+    """FORCE ASCII pur - ZÉRO erreur Helvetica"""
     if not text: return "NC"
-    # Supprime TOUS caractères spéciaux
-    allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz 0123456789:.,-()°%€$&?!#"
-    cleaned = ''.join(c for c in str(text) if ord(c) < 128)[:100]
-    return cleaned or "NC"
+    # Garde SEULEMENT lettres, chiffres, espaces, points, tirets
+    ascii_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz 0123456789.,-():"
+    return ''.join([c for c in str(text) if c in ascii_chars])[:80] or "NC"
 
-class TechPDF(FPDF):
-    def header(self):
-        self.set_fill_color(0, 71, 155)
-        self.rect(0, 0, 210, 8, 'F')
+class SimplePDF(FPDF):
+    pass  # Pas d'header fancy
 
 def generate_pro_pdf(prod_name, brand, ref, specs):
-    pdf = TechPDF()
+    pdf = SimplePDF()
     pdf.add_page()
-
-    cat_id = specs.get("GeneralInfo", {}).get("Category", {}).get("ID", 0)
     
-    # TES configs catégories
-    if cat_id in [303, 712]: cfg = {"n": "IMPRESSION", "c": (0, 51, 153)}
-    elif cat_id in [160, 202, 1584]: cfg = {"n": "AFFICHAGE", "c": (20, 90, 50)}
-    elif cat_id in [151, 189]: cfg = {"n": "INFORMATIQUE", "c": (44, 62, 80)}
-    else: cfg = {"n": "HARDWARE", "c": (80, 80, 80)}
-
-    # HEADER (ASCII only)
-    pdf.set_xy(10, 12)
-    pdf.set_font("Helvetica", "B", 20)
-    pdf.set_text_color(*cfg["c"])
-    pdf.cell(0, 10, clean_txt(prod_name), ln=1, align='C')
-
-    pdf.set_font("Helvetica", "", 12)
-    pdf.set_text_color(60, 60, 60)
-    subtitle = f"{clean_txt(brand)} | PN: {ref} | {cfg['n']}"
-    pdf.cell(0, 8, subtitle, ln=1, align='C')
-
-    # LOGO/IMAGE (ASCII art pro)
-    pdf.set_xy(155, 15)
-    pdf.set_font("Helvetica", "", 20)
-    pdf.cell(40, 40, "🖼️", ln=1)
-
-    # CARACTÉRISTIQUES CLÉS
-    pdf.set_xy(10, 55)
-    pdf.set_font("Helvetica", "B", 13)
-    pdf.set_text_color(*cfg["c"])
-    pdf.cell(95, 7, "CARACTERISTIQUES CLES", ln=1)
-
-    pdf.set_fill_color(248, 249, 250)
-    pdf.rect(10, 62, 95, 45, 'D')
+    # Couleur simple
+    pdf.set_fill_color(0, 100, 200)
+    pdf.rect(10, 10, 190, 30, 'F')
     
-    pdf.set_xy(15, 67)
-    pdf.set_font("Helvetica", "", 10)
-    key_features = []
+    # TITRE (ASCII garanti)
+    pdf.set_xy(20, 20)
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(170, 10, clean_ascii(prod_name), 0, 1, 'C')
+    
+    pdf.set_xy(20, 35)
+    pdf.set_font("Helvetica", "", 14)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(170, 8, f"{clean_ascii(brand)} - {ref}", 0, 1, 'C')
+    
+    # CARACTÉRISTIQUES
+    pdf.set_xy(15, 55)
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_text_color(0, 100, 200)
+    pdf.cell(0, 10, "SPECIFICATIONS PRINCIPALES", 0, 1)
+    
+    pdf.set_font("Helvetica", "", 11)
+    y_pos = 70
     if "FeaturesGroups" in specs:
-        for group in specs["FeaturesGroups"][:1]:
-            for feat in group.get("Features", [])[:6]:
-                n = feat.get("Feature", {}).get("Name", {}).get("Value", "")
-                v = feat.get("PresentationValue", "")
-                if n and v:
-                    key_features.append(f"- {clean_txt(n)}: {clean_txt(v)}")
+        for group in specs["FeaturesGroups"][:3]:
+            gname = clean_ascii(group.get("GroupName", "Specs"))
+            if gname != "NC":
+                pdf.set_xy(15, y_pos)
+                pdf.set_font("Helvetica", "B", 11)
+                pdf.cell(0, 6, gname, 0, 1)
+                y_pos += 8
+                
+                for feat in group.get("Features", [])[:6]:
+                    n = clean_ascii(feat.get("Feature", {}).get("Name", {}).get("Value", ""))
+                    v = clean_ascii(feat.get("PresentationValue", ""))
+                    if n != "NC" and v != "NC":
+                        pdf.set_xy(20, y_pos)
+                        pdf.set_font("Helvetica", "", 10)
+                        line = f"{n}: {v}"
+                        pdf.cell(175, 5, line, 0, 1)
+                        y_pos += 6
+                        if y_pos > 250: break
     
-    pdf.multi_cell(90, 5, "\n".join(key_features)[:8])
-
-    # TABLEAU SPECS (core de ton app)
-    pdf.set_xy(10, 115)
+    # TABLEAU SIMPLE
+    pdf.set_xy(15, max(y_pos, 140))
     pdf.set_font("Helvetica", "B", 14)
-    pdf.set_text_color(*cfg["c"])
-    pdf.cell(190, 8, "SPECIFICATIONS TECHNIQUES", ln=1, align='C')
-
-    # En-têtes
+    pdf.set_text_color(0, 100, 200)
+    pdf.cell(0, 8, "TABLEAU TECHNIQUE", 0, 1)
+    
+    # Lignes tableau
     pdf.set_font("Helvetica", "B", 10)
-    pdf.set_fill_color(240, 240, 240)
-    pdf.cell(90, 6, "Caractéristique", 1)
-    pdf.cell(100, 6, "Valeur", 1, 1)
-
+    pdf.cell(80, 6, "Parametre", 1)
+    pdf.cell(95, 6, "Valeur", 1, 1)
+    
     pdf.set_font("Helvetica", "", 9)
-    row_count = 0
+    specs_list = []
     if "FeaturesGroups" in specs:
         for group in specs["FeaturesGroups"]:
-            gname = clean_txt(group.get("GroupName", ""))
-            if gname and row_count < 20:
-                pdf.set_fill_color(230, 240, 255)
-                pdf.cell(190, 5, gname, 1, 1, 'L')
-            
-            for feat in group.get("Features", []):
-                n = clean_txt(feat.get("Feature", {}).get("Name", {}).get("Value", ""))
-                v = clean_txt(feat.get("PresentationValue", ""))
-                if n != "NC" and v != "NC" and row_count < 25:
-                    pdf.cell(90, 5, n, 1)
-                    pdf.multi_cell(100, 5, v, 1)
-                    row_count += 1
-
+            for feat in group.get("Features", [])[:12]:
+                n = clean_ascii(feat.get("Feature", {}).get("Name", {}).get("Value", ""))
+                v = clean_ascii(feat.get("PresentationValue", ""))
+                if n != "NC" and v != "NC":
+                    specs_list.append((n, v))
+                    if len(specs_list) >= 15: break
+    
+    for n, v in specs_list:
+        pdf.cell(80, 5, n, 1)
+        pdf.cell(95, 5, v, 1, 1)
+    
     # FOOTER
-    pdf.set_y(-15)
+    pdf.set_xy(15, 280)
     pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 5, f"WIKIDATA IT | {clean_txt(brand)} {ref} | Electroplanet Maroc", 0, 1, 'C')
-
+    pdf.cell(0, 5, f"Generate par WIKIDATA IT - {brand} {ref} - Electroplanet Maroc", 0, 1, 'C')
+    
     return bytes(pdf.output(dest="S"))
 
-
-# === INTERFACE (TON DESIGN) ===
+# TON INTERFACE EXACTE
 st.set_page_config(page_title="WIKIDATA IT", layout="wide")
 st.markdown("<h1 style='text-align: center;'>🌐 WIKIDATA IT</h1>", unsafe_allow_html=True)
 
 col1, col2 = st.columns([2, 1])
 with col1:
-    query = st.text_input("Référence Constructeur (PN)", placeholder="Ex: UA85U8000FUXMV")
+    query = st.text_input("Reference Constructeur (PN)", placeholder="Ex: UA85U8000FUXMV")
 with col2:
     st.write("##")
     btn_search = st.button("🔍 Lancer la recherche", use_container_width=True)
 
 if btn_search:
-    if not query:
-        st.warning("Veuillez entrer un PN.")
-    else:
+    if query:
         try:
             q_upper = query.strip().upper()
-            st.info(f"🔍 Recherche: `{q_upper}`")
-            
             res = supabase.table("it_specs_maroc").select("*").eq("ref_constructeur", q_upper).execute()
             
             if res.data:
                 prod = res.data[0]
-                specs = prod.get('specs_json', {})
+                specs = prod['specs_json']
                 
-                st.success(f"✅ **{prod['nom_produit']}** trouvé !")
+                st.success(f"✅ Produit trouve : {prod['nom_produit']}")
                 
-                # Metrics (TON style)
                 cols = st.columns(3)
                 with cols[0]:
                     st.metric("Marque", prod['marque'])
                 with cols[1]:
-                    st.metric("Référence", prod['ref_constructeur'])
+                    st.metric("Reference", prod['ref_constructeur'])
                 
-                # Aperçu specs
                 if "FeaturesGroups" in specs:
-                    with st.expander("Voir tous les détails techniques", expanded=True):
+                    with st.expander("Voir tous les details techniques", expanded=True):
                         for group in specs["FeaturesGroups"]:
                             st.markdown(f"**{group.get('GroupName', 'Specs')}**")
                             data_tab = []
@@ -167,38 +136,19 @@ if btn_search:
                                 n = feat.get("Feature", {}).get("Name", {}).get("Value")
                                 v = feat.get("PresentationValue")
                                 if n and v: 
-                                    data_tab.append({"Caractéristique": n, "Valeur": v})
+                                    data_tab.append({"Caracteristique": n, "Valeur": v})
                             st.table(data_tab)
 
-                # GÉNÉRATION PDF
-                pdf_bytes = generate_pro_pdf(
-                    prod['nom_produit'], 
-                    prod['marque'], 
-                    prod['ref_constructeur'], 
-                    specs
-                )
-                
-                st.download_button(
-                    "📥 **TÉLÉCHARGER FICHE PDF**", 
-                    pdf_bytes, 
-                    f"WIKIDATA_{q_upper}.pdf", 
-                    "application/pdf"
-                )
+                # PDF SANS ERREUR
+                pdf_bytes = generate_pro_pdf(prod['nom_produit'], prod['marque'], prod['ref_constructeur'], specs)
+                st.download_button("📥 Telecharger la Fiche PDF Complete", pdf_bytes, f"WIKIDATA_{q_upper}.pdf", "application/pdf")
                 
             else:
-                # Log besoin (TON code)
                 supabase.table("besoin_client").insert({"reference_cherchee": q_upper}).execute()
-                st.error("❌ Référence inconnue. **Besoin enregistré**.")
+                st.error("❌ Reference inconnue. Le besoin a ete enregistre.")
                 
         except Exception as e:
             st.error(f"❌ Erreur: {str(e)}")
-            st.info("Vérifie `st.secrets['SUPABASE_KEY']` dans `.streamlit/secrets.toml`")
-
-# Sidebar aide
-with st.sidebar:
-    st.header("📖 Guide")
-    st.info("""
-    **1.** Saisis PN (ex: C11CJ68501)
-    **2.** Clique 🔍
-    **3.** 📥 Fiche PDF pro !
-    """)
+            st.info("Secrets.toml OK ?")
+    else:
+        st.warning("Veuillez entrer un PN.")
