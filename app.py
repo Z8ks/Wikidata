@@ -20,19 +20,34 @@ class TechPDF(FPDF):
         self.set_fill_color(0, 71, 155)
         self.rect(0, 0, 210, 8, 'F')
 
-def generate_pro_pdf(prod_name, brand, ref, specs, price=None):
+from fpdf import FPDF
+
+def clean_txt(text):
+    """Nettoie STRICT ASCII pour Helvetica"""
+    if not text: return "NC"
+    # Supprime TOUS caractères spéciaux
+    allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz 0123456789:.,-()°%€$&?!#"
+    cleaned = ''.join(c for c in str(text) if ord(c) < 128)[:100]
+    return cleaned or "NC"
+
+class TechPDF(FPDF):
+    def header(self):
+        self.set_fill_color(0, 71, 155)
+        self.rect(0, 0, 210, 8, 'F')
+
+def generate_pro_pdf(prod_name, brand, ref, specs):
     pdf = TechPDF()
     pdf.add_page()
 
     cat_id = specs.get("GeneralInfo", {}).get("Category", {}).get("ID", 0)
     
-    # Couleurs par catégorie (TES configs)
+    # TES configs catégories
     if cat_id in [303, 712]: cfg = {"n": "IMPRESSION", "c": (0, 51, 153)}
     elif cat_id in [160, 202, 1584]: cfg = {"n": "AFFICHAGE", "c": (20, 90, 50)}
     elif cat_id in [151, 189]: cfg = {"n": "INFORMATIQUE", "c": (44, 62, 80)}
     else: cfg = {"n": "HARDWARE", "c": (80, 80, 80)}
 
-    # HEADER
+    # HEADER (ASCII only)
     pdf.set_xy(10, 12)
     pdf.set_font("Helvetica", "B", 20)
     pdf.set_text_color(*cfg["c"])
@@ -40,88 +55,73 @@ def generate_pro_pdf(prod_name, brand, ref, specs, price=None):
 
     pdf.set_font("Helvetica", "", 12)
     pdf.set_text_color(60, 60, 60)
-    subtitle = f"{brand} | PN: {ref} | {cfg['n']}"
-    if price: subtitle += f" | {price}"
+    subtitle = f"{clean_txt(brand)} | PN: {ref} | {cfg['n']}"
     pdf.cell(0, 8, subtitle, ln=1, align='C')
 
-    # IMAGE PLACEHOLDER (🖼️ pro)
+    # LOGO/IMAGE (ASCII art pro)
     pdf.set_xy(155, 15)
-    pdf.set_font("Helvetica", "", 24)
+    pdf.set_font("Helvetica", "", 20)
     pdf.cell(40, 40, "🖼️", ln=1)
 
     # CARACTÉRISTIQUES CLÉS
-    pdf.set_xy(10, 50)
+    pdf.set_xy(10, 55)
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(*cfg["c"])
-    pdf.cell(95, 7, "🔑 CARACTÉRISTIQUES CLÉS", ln=1)
+    pdf.cell(95, 7, "CARACTERISTIQUES CLES", ln=1)
 
     pdf.set_fill_color(248, 249, 250)
-    pdf.rect(10, 57, 95, 45, 'D')
+    pdf.rect(10, 62, 95, 45, 'D')
     
-    pdf.set_xy(15, 62)
+    pdf.set_xy(15, 67)
     pdf.set_font("Helvetica", "", 10)
     key_features = []
     if "FeaturesGroups" in specs:
-        for group in specs["FeaturesGroups"][:1]:  # Premier groupe
-            for feat in group.get("Features", [])[:5]:
+        for group in specs["FeaturesGroups"][:1]:
+            for feat in group.get("Features", [])[:6]:
                 n = feat.get("Feature", {}).get("Name", {}).get("Value", "")
                 v = feat.get("PresentationValue", "")
                 if n and v:
-                    key_features.append(f"• {n}: {v}")
+                    key_features.append(f"- {clean_txt(n)}: {clean_txt(v)}")
     
-    pdf.multi_cell(90, 5, "\n".join(key_features) or "Détails disponibles dans le tableau")
+    pdf.multi_cell(90, 5, "\n".join(key_features)[:8])
 
-    # DIMENSIONS (droite)
-    pdf.set_xy(115, 50)
-    pdf.set_font("Helvetica", "B", 13)
-    pdf.set_text_color(*cfg["c"])
-    pdf.cell(85, 7, "📏 DIMENSIONS", ln=1)
-
-    pdf.set_fill_color(248, 249, 250)
-    pdf.rect(115, 57, 85, 45, 'D')
-    
-    pdf.set_xy(120, 62)
-    g_info = specs.get("GeneralInfo", {})
-    dims = g_info.get("Dimensions", {})
-    dim_text = []
-    if dims.get("Width"): dim_text.append(f"LxPxH: {dims['Width']}x{dims.get('Depth','')}x{dims.get('Height','')}")
-    pdf.multi_cell(80, 5, "\n".join(dim_text) or "NC")
-
-    # TABLEAU SPECS (TON point fort)
-    pdf.set_xy(10, 110)
+    # TABLEAU SPECS (core de ton app)
+    pdf.set_xy(10, 115)
     pdf.set_font("Helvetica", "B", 14)
     pdf.set_text_color(*cfg["c"])
-    pdf.cell(190, 8, "⚙️ SPÉCIFICATIONS TECHNIQUES", ln=1, align='C')
+    pdf.cell(190, 8, "SPECIFICATIONS TECHNIQUES", ln=1, align='C')
 
+    # En-têtes
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_fill_color(240, 240, 240)
     pdf.cell(90, 6, "Caractéristique", 1)
     pdf.cell(100, 6, "Valeur", 1, 1)
 
     pdf.set_font("Helvetica", "", 9)
-    specs_count = 0
+    row_count = 0
     if "FeaturesGroups" in specs:
         for group in specs["FeaturesGroups"]:
-            gname = group.get("GroupName", "")
-            if gname and specs_count < 20:  # Limite 20 lignes
+            gname = clean_txt(group.get("GroupName", ""))
+            if gname and row_count < 20:
                 pdf.set_fill_color(230, 240, 255)
                 pdf.cell(190, 5, gname, 1, 1, 'L')
             
             for feat in group.get("Features", []):
-                n = feat.get("Feature", {}).get("Name", {}).get("Value", "")
-                v = feat.get("PresentationValue", "")
-                if n and v and specs_count < 25:
-                    pdf.cell(90, 5, clean_txt(n), 1)
-                    pdf.multi_cell(100, 5, clean_txt(v), 1)
-                    specs_count += 1
+                n = clean_txt(feat.get("Feature", {}).get("Name", {}).get("Value", ""))
+                v = clean_txt(feat.get("PresentationValue", ""))
+                if n != "NC" and v != "NC" and row_count < 25:
+                    pdf.cell(90, 5, n, 1)
+                    pdf.multi_cell(100, 5, v, 1)
+                    row_count += 1
 
     # FOOTER
     pdf.set_y(-15)
     pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 5, f"WIKIDATA IT | {brand} {ref} | Electroplanet | {datetime.now().strftime('%d/%m/%Y')}", 0, 1, 'C')
+    pdf.cell(0, 5, f"WIKIDATA IT | {clean_txt(brand)} {ref} | Electroplanet Maroc", 0, 1, 'C')
 
     return bytes(pdf.output(dest="S"))
+
 
 # === INTERFACE (TON DESIGN) ===
 st.set_page_config(page_title="WIKIDATA IT", layout="wide")
